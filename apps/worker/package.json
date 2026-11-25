@@ -1,0 +1,30 @@
+{
+  "name": "@nopi/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Worker chạy nền: chuyển sự kiện outbox → handler; sau này xử lý media (FFmpeg), quét đề, xuất báo cáo, gửi thông báo",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node --env-file-if-exists=../../.env --watch --import @swc-node/register/esm-register src/main.ts",
+    "start": "node --env-file-if-exists=../../.env dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.6.0",
+    "@nestjs/core": "^12.6.0",
+    "@nopi/api": "workspace:*",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@nopi/config": "workspace:*",
+    "@swc-node/register": "^1.12.1",
+    "@swc/core": "^1.16.22",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.15.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.1"
+  }
+}

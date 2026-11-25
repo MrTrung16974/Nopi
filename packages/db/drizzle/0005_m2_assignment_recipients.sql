@@ -1,0 +1,1 @@
+ALTER TABLE "assignments" ADD COLUMN "recipient_student_ids" uuid[];

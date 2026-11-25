@@ -1,0 +1,3 @@
+ALTER TABLE "media_files" ADD COLUMN "uploaded_by_student_id" uuid;--> statement-breakpoint
+ALTER TABLE "media_files" ADD CONSTRAINT "media_files_uploaded_by_student_id_students_id_fk" FOREIGN KEY ("uploaded_by_student_id") REFERENCES "public"."students"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "media_files" ADD CONSTRAINT "media_files_owner_chk" CHECK ("media_files"."uploaded_by" IS NOT NULL OR "media_files"."uploaded_by_student_id" IS NOT NULL);

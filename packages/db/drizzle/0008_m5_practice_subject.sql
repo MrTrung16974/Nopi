@@ -1,0 +1,2 @@
+ALTER TABLE "assignments" ADD COLUMN "practice_subject_id" smallint;--> statement-breakpoint
+ALTER TABLE "assignments" ADD CONSTRAINT "assignments_practice_subject_id_subjects_id_fk" FOREIGN KEY ("practice_subject_id") REFERENCES "public"."subjects"("id") ON DELETE no action ON UPDATE no action;

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nopi
+          POSTGRES_PASSWORD: nopi
+          POSTGRES_DB: nopi
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U nopi" --health-interval 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    env:
+      DATABASE_URL: postgres://nopi:nopi@localhost:5432/nopi
+      REDIS_URL: redis://localhost:6379
+      TZ: Asia/Ho_Chi_Minh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # MinIO (kho media chuẩn S3) và ffmpeg (worker xử lý video/ghi âm) cho test tích hợp
+      - name: Khởi động MinIO
+        run: docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER=nopi -e MINIO_ROOT_PASSWORD=nopi-dev-secret cgr.dev/chainguard/minio:latest server /data
+      - name: Cài ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: pnpm install --frozen-lockfile
+      # Lint gồm luật ranh giới mô-đun (nopi/module-boundaries)
+      - run: pnpm turbo run lint typecheck build test
+      # Migration trong repo phải khớp với lược đồ TypeScript
+      - name: Kiểm tra migration đã được sinh
+        run: |
+          pnpm --filter @nopi/db exec drizzle-kit generate --name=ci_check
+          git diff --exit-code -- packages/db/drizzle || (echo "::error::Lược đồ đã đổi nhưng chưa sinh migration. Chạy: pnpm --filter @nopi/db generate" && exit 1)
+      - name: Kiểm tra app Expo
+        working-directory: apps/mobile
+        run: CI=1 npx expo-doctor

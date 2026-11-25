@@ -1,0 +1,50 @@
+{
+  "name": "@nopi/mobile",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "@nopi/contracts": "workspace:*",
+    "@nopi/copy": "workspace:*",
+    "@nopi/domain": "workspace:*",
+    "@nopi/ui": "workspace:*",
+    "@nopi/upload-queue": "workspace:*",
+    "@tanstack/react-query": "^5.108.4",
+    "expo": "~58.0.26",
+    "expo-audio": "~58.0.12",
+    "expo-camera": "~58.0.14",
+    "expo-constants": "~58.0.16",
+    "expo-device": "~58.0.5",
+    "expo-file-system": "~58.0.14",
+    "expo-image-manipulator": "~58.0.16",
+    "expo-linking": "~58.0.17",
+    "expo-notifications": "~58.1.9",
+    "expo-router": "~58.0.32",
+    "expo-secure-store": "~58.0.3",
+    "expo-speech": "~58.0.4",
+    "expo-status-bar": "~58.0.5",
+    "expo-video": "~58.0.14",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.11.1",
+    "react-native-screens": "~4.30.1",
+    "react-native-web": "^0.21.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@nopi/config": "workspace:*",
+    "@types/react": "~19.3.0",
+    "eslint": "^10.15.0",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "private": true,
+  "description": "App học sinh (Nhí/Teen), phụ huynh, giáo viên — Android, iOS và web (Expo Web)"
+}

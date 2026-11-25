@@ -1,0 +1,43 @@
+{
+  "name": "@nopi/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lược đồ PostgreSQL (Drizzle), migration, seed danh mục GDPT 2018",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema/index.d.ts",
+      "default": "./dist/schema/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json -w --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "generate": "drizzle-kit generate",
+    "migrate": "node --env-file-if-exists=../../.env dist/migrate.js",
+    "seed": "node --env-file-if-exists=../../.env dist/seed/run.js",
+    "studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@nopi/domain": "workspace:*",
+    "@opentelemetry/api": "1.10.0",
+    "drizzle-orm": "^0.45.4",
+    "postgres": "^3.4.7",
+    "uuid": "^14.0.3"
+  },
+  "devDependencies": {
+    "@nopi/config": "workspace:*",
+    "@types/node": "^24.0.0",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^10.0.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.1"
+  }
+}

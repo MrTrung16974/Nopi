@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+
+onlyBuiltDependencies:
+  - esbuild
+  - '@swc/core'
+
+# Cả monorepo chỉ dùng MỘT phiên bản React (yêu cầu của Expo). Nâng React = nâng ở đây,
+# theo phiên bản mà SDK Expo đang dùng hỗ trợ.
+overrides:
+  react: 19.3.0
+  react-dom: 19.3.0

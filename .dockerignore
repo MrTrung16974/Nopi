@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/.expo
+**/*.tsbuildinfo
+**/coverage
+**/*.log
+.git
+.env
+.env.*
+!.env.example
+*.docx
+**/.DS_Store
+apps/mobile

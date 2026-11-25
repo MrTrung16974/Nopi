@@ -1,0 +1,1 @@
+ALTER TABLE "media_files" ADD COLUMN "upload_id" text;

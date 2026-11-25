@@ -1,0 +1,1 @@
+{ "extends": "@nopi/config/tsconfig/library.json", "compilerOptions": { "lib": ["ES2023", "DOM"] } }

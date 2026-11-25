@@ -1,0 +1,89 @@
+# Chạy toàn bộ hệ thống bằng Docker: Postgres, Redis, MinIO + migrate/seed, API, worker, web.
+#   docker compose up -d --build
+#   API  http://localhost:3000/v1   (health: /health)
+#   Web  http://localhost:3200
+#   MinIO console http://localhost:9001
+# Chỉ cần hạ tầng để code ở máy (pnpm dev): pnpm db:up (dùng infra/docker-compose.yml).
+name: nopi
+
+include:
+  - infra/docker-compose.yml
+
+x-server-env: &server-env
+  NODE_ENV: ${NODE_ENV:-development}
+  TZ: Asia/Ho_Chi_Minh
+  DATABASE_URL: postgres://nopi:nopi@postgres:5432/nopi
+  REDIS_URL: redis://redis:6379
+  S3_ENDPOINT: http://minio:9000
+  # Địa chỉ trình duyệt/điện thoại dùng để tải media (URL ký sẵn). Thử trên máy thật: http://<IP LAN>:9000
+  S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+  S3_BUCKET: nopi-media
+  S3_REGION: ap-southeast-1
+  S3_ACCESS_KEY: nopi
+  S3_SECRET_KEY: nopi-dev-secret
+  S3_CREATE_BUCKET: 'true'
+  JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789}
+  GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3200,http://localhost:8081}
+  API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3000}
+  OTP_CHANNELS: ${OTP_CHANNELS:-console}
+  PUSH_PROVIDER: ${PUSH_PROVIDER:-console}
+  ZALO_NOTIFY_PROVIDER: ${ZALO_NOTIFY_PROVIDER:-console}
+  PAYMENT_PROVIDERS: ${PAYMENT_PROVIDERS:-fake}
+  STORE_VERIFIER: ${STORE_VERIFIER:-fake}
+  # Quét đề: fake (đề mẫu) | claude (cần ANTHROPIC_API_KEY) | none (tắt)
+  SCAN_ENGINE: ${SCAN_ENGINE:-fake}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+services:
+  # Chạy migration + seed danh mục (seed chạy lại nhiều lần vẫn an toàn) rồi thoát
+  migrate:
+    image: nopi-server          # dùng lại image của api (build ở service api)
+    pull_policy: never
+    working_dir: /app/packages/db
+    command: ["sh", "-c", "node dist/migrate.js && node dist/seed/run.js"]
+    environment: *server-env
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: 'no'
+
+  api:
+    image: nopi-server
+    build: { context: ., target: api }
+    environment:
+      <<: *server-env
+      API_PORT: 3000
+    ports: ["3000:3000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_started }
+      minio: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  worker:
+    build: { context: ., target: worker }
+    environment: *server-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_started }
+      minio: { condition: service_started }
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        API_URL: http://api:3000
+    environment:
+      API_URL: http://api:3000
+    ports: ["3200:3200"]
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
