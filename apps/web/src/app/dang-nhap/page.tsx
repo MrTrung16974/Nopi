@@ -131,14 +131,14 @@ export default function LoginPage() {
           <div style={{ display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <Link
-                href="/hoc-sinh?demo=nhi"
+                href="/trai-nghiem?che-do=nhi"
                 className="btn primary"
                 style={{ borderRadius: 999, padding: '0 20px', minHeight: 46, fontSize: 14.5 }}
               >
                 🐟 Trải nghiệm Nhí (Lớp 1–5)
               </Link>
               <Link
-                href="/hoc-sinh?demo=teen"
+                href="/trai-nghiem?che-do=teen"
                 className="btn"
                 style={{
                   background: 'rgba(255,255,255,0.92)',

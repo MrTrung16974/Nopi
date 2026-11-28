@@ -72,6 +72,20 @@ export const passFailScheme: GradingScheme<{
 
 export const SCORE_STEP = 0.25;
 
+/**
+ * Đọc ô điểm giáo viên gõ (chấp nhận dấu phẩy kiểu Việt Nam). Ô trống KHÔNG được hiểu là 0.
+ * Dùng chung cho web và app trước khi gửi lên API.
+ */
+export function parseScoreInput(raw: string): { ok: true; score: number } | { ok: false; error: string } {
+  const text = raw.trim().replace(',', '.');
+  if (text === '') return { ok: false, error: 'Thầy cô chưa nhập điểm' };
+  if (!/^\d+(\.\d+)?$/.test(text)) return { ok: false, error: 'Điểm phải là số, ví dụ 8 hoặc 8,5' };
+  const score = Number(text);
+  if (score < 0 || score > 10) return { ok: false, error: 'Điểm phải từ 0 đến 10' };
+  if (!Number.isInteger(score / SCORE_STEP)) return { ok: false, error: 'Điểm lẻ theo bước 0,25 (ví dụ 7,25 · 7,5 · 7,75)' };
+  return { ok: true, score };
+}
+
 export const score10Scheme: GradingScheme<{
   score: number;
   comment?: string;

@@ -69,6 +69,7 @@ export class TeachingReader {
 
   /** Giao bài: phải đang được phân công lớp–môn này (hoặc là quản trị trường). */
   async requireCanAssign(actor: Actor, ta: TeachingRef) {
+    await this.access.requireSchoolActive(actor, ta.schoolId);
     if (actor.kind === 'user' && ta.isCurrent && ta.teacherId === actor.userId) return;
     if (await this.isAdmin(actor, ta.schoolId)) return;
     throw new AppError('forbidden', `Bạn không được phân công dạy môn này ở lớp ${ta.class.name}`);
@@ -79,6 +80,7 @@ export class TeachingReader {
    * hoặc quản trị trường.
    */
   async requireCanGrade(actor: Actor, ta: TeachingRef) {
+    await this.access.requireSchoolActive(actor, ta.schoolId);
     if (actor.kind === 'user') {
       if (ta.teacherId === actor.userId) return;
       const [current] = await this.db

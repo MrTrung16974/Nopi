@@ -51,11 +51,13 @@ export function Shell({ children }: { children: ReactNode }) {
               <Link href="/" className="nav-link" aria-current={pathname === '/' ? 'page' : undefined}>
                 Trang chủ
               </Link>
+              {s.user.isSystemAdmin && (
+                <Link href="/quan-tri" className="nav-link" aria-current={pathname.startsWith('/quan-tri') ? 'page' : undefined}>
+                  Quản trị hệ thống
+                </Link>
+              )}
               <Link href="/gia-dinh" className="nav-link" aria-current={pathname === '/gia-dinh' ? 'page' : undefined}>
                 Gia đình
-              </Link>
-              <Link href="/hoc-sinh?demo=nhi" className="nav-link" aria-current={pathname === '/hoc-sinh' ? 'page' : undefined}>
-                Học sinh
               </Link>
               <Link href="/mon-hoc?lop=1" className="nav-link" aria-current={pathname === '/mon-hoc' ? 'page' : undefined}>
                 Môn 1–9

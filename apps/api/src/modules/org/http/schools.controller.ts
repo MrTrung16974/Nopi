@@ -1,5 +1,8 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import {
+  addSchoolAdminSchema,
+  adminSchoolQuerySchema,
+  updateSchoolSchema,
   createAcademicYearSchema,
   createClassSchema,
   createSchoolSchema,
@@ -9,6 +12,7 @@ import {
 import type { Grade } from '@nopi/domain';
 import type { z } from 'zod';
 import { CurrentActor, CurrentUser, ZodPipe, type Actor, type UserActor } from '../../../platform/index.js';
+import { AdminSchoolsService } from '../application/admin-schools.service.js';
 import { SchoolsService } from '../application/schools.service.js';
 import { SpaceSettingsService } from '../application/space-settings.service.js';
 import { TeachingService } from '../application/teaching.service.js';
@@ -19,6 +23,7 @@ export class SchoolsController {
     private readonly schools: SchoolsService,
     private readonly teaching: TeachingService,
     private readonly settings: SpaceSettingsService,
+    private readonly adminSchools: AdminSchoolsService,
   ) {}
 
   @Get('schools/:schoolId/settings')
@@ -34,6 +39,32 @@ export class SchoolsController {
     @Body(new ZodPipe(updateSpaceSettingsSchema)) b: z.infer<typeof updateSpaceSettingsSchema>,
   ) {
     return this.settings.update(actor, schoolId, b);
+  }
+
+  // ----- Quản trị hệ thống -----
+  @Get('admin/schools')
+  listSchools(@CurrentActor() actor: Actor, @Query(new ZodPipe(adminSchoolQuerySchema)) q: z.infer<typeof adminSchoolQuerySchema>) {
+    return this.adminSchools.list(actor, q);
+  }
+
+  @Get('admin/schools/:schoolId')
+  getSchool(@CurrentActor() actor: Actor, @Param('schoolId', ParseUUIDPipe) schoolId: string) {
+    return this.adminSchools.get(actor, schoolId);
+  }
+
+  @Patch('admin/schools/:schoolId')
+  updateSchool(@CurrentActor() actor: Actor, @Param('schoolId', ParseUUIDPipe) schoolId: string, @Body(new ZodPipe(updateSchoolSchema)) b: z.infer<typeof updateSchoolSchema>) {
+    return this.adminSchools.update(actor, schoolId, b);
+  }
+
+  @Post('admin/schools/:schoolId/admins')
+  addSchoolAdmin(@CurrentActor() actor: Actor, @Param('schoolId', ParseUUIDPipe) schoolId: string, @Body(new ZodPipe(addSchoolAdminSchema)) b: z.infer<typeof addSchoolAdminSchema>) {
+    return this.adminSchools.addAdmin(actor, schoolId, b);
+  }
+
+  @Delete('admin/schools/:schoolId/admins/:userId')
+  removeSchoolAdmin(@CurrentActor() actor: Actor, @Param('schoolId', ParseUUIDPipe) schoolId: string, @Param('userId', ParseUUIDPipe) userId: string) {
+    return this.adminSchools.removeAdmin(actor, schoolId, userId);
   }
 
   @Post('admin/schools')

@@ -1,6 +1,6 @@
 import { commentTemplateSchema, gradingRowSchema, teacherAssignmentSchema, type GradingRow } from '@nopi/contracts';
 import { vi } from '@nopi/copy';
-import { stageOfGrade, STICKERS, type Grade } from '@nopi/domain';
+import { parseScoreInput, stageOfGrade, STICKERS, type Grade } from '@nopi/domain';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -37,13 +37,20 @@ function Grader() {
     enabled: Boolean(a.data),
   });
 
-  // Hàng chờ chấm: bắt đầu từ em được chọn (nếu có), rồi các em "Chờ chấm"
+  // Hàng chờ chấm: bắt đầu từ em được chọn (nếu có), rồi các em "Chờ chấm".
+  // Chốt danh sách MỘT lần khi tải xong: nếu dữ liệu tải lại (em vừa chấm không còn "Chờ chấm"),
+  // thứ tự không bị xô lệch → không bỏ sót em nào.
+  const [queueIds, setQueueIds] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (queueIds || !rows.data) return;
+    const waiting = rows.data.filter((r) => r.status === 'submitted').map((r) => r.studentAssignmentId);
+    const first = start && rows.data.some((r) => r.studentAssignmentId === start) ? start : undefined;
+    setQueueIds(first ? [first, ...waiting.filter((x) => x !== first)] : waiting);
+  }, [rows.data, start, queueIds]);
   const queue = useMemo(() => {
-    const all = rows.data ?? [];
-    const waiting = all.filter((r) => r.status === 'submitted');
-    const first = start ? all.find((r) => r.studentAssignmentId === start) : undefined;
-    return first ? [first, ...waiting.filter((r) => r.studentAssignmentId !== first.studentAssignmentId)] : waiting;
-  }, [rows.data, start]);
+    const byId = new Map((rows.data ?? []).map((r) => [r.studentAssignmentId, r]));
+    return (queueIds ?? []).map((x) => byId.get(x)).filter((r): r is GradingRow => Boolean(r));
+  }, [rows.data, queueIds]);
   const [index, setIndex] = useState(0);
   const row: GradingRow | undefined = queue[index];
 
@@ -68,7 +75,7 @@ function Grader() {
     setRecording(false);
   }, [row?.studentAssignmentId]);
 
-  if (!a.data || !rows.data) return <Screen><T variant="muted">Đang tải…</T></Screen>;
+  if (!a.data || !rows.data || !queueIds) return <Screen><T variant="muted">Đang tải…</T></Screen>;
   if (!row) {
     return (
       <Screen footer={<PrimaryButton label="Xong" onPress={() => router.back()} />}>
@@ -80,16 +87,27 @@ function Grader() {
 
   const save = async (requiresRedo: boolean) => {
     if (!row.latest) return;
-    setSaving(true);
     setError(null);
-    try {
-      const body: Record<string, unknown> = { requiresRedo, comment: comment || undefined, sticker: sticker ?? undefined, commentAudioId: audioId ?? undefined };
-      if (!requiresRedo) {
-        if (scheme === 'score_10') body.score = Number(score.replace(',', '.'));
-        else body.level = level ?? undefined;
+    const body: Record<string, unknown> = { requiresRedo, comment: comment || undefined, sticker: sticker ?? undefined, commentAudioId: audioId ?? undefined };
+    if (!requiresRedo) {
+      if (scheme === 'score_10') {
+        // Ô trống không được hiểu là 0 điểm
+        const parsed = parseScoreInput(score);
+        if (!parsed.ok) return setError(parsed.error);
+        body.score = parsed.score;
+      } else {
+        if (!level) return setError('Thầy cô chưa chọn mức đánh giá');
+        body.level = level;
       }
+    }
+    setSaving(true);
+    try {
       await api(`/submissions/${row.latest.id}/evaluation`, { method: 'PUT', body });
-      await qc.invalidateQueries({ queryKey: ['teacher'] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['teacher'] }),
+        // Lưới chấm (giao-vien/bai/[id]) cập nhật khi quay lại
+        qc.invalidateQueries({ queryKey: ['assignment', id] }),
+      ]);
       setIndex((i) => i + 1);
     } catch (e) {
       setError(e instanceof ApiError ? e.friendly : String(e));

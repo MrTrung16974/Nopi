@@ -15,6 +15,19 @@ export interface StudentTaskFeedback {
   sticker?: string | null;
   label?: string | null;
   comment?: string | null;
+  /** Lời nhận xét ghi âm của cô */
+  commentAudioUrl?: string | null;
+}
+
+/** Một file con vừa chụp/ghi/quay, chờ gửi. `blob` có ở bản thật; bản trải nghiệm chỉ có nhãn. */
+export interface DraftFile {
+  kind: 'photo' | 'audio' | 'video';
+  label: string;
+  url?: string;
+  blob?: Blob;
+  durationS?: number;
+  /** Đã tải lên kho (gửi lại sau lỗi mạng thì không tải lại) */
+  mediaId?: string;
 }
 
 export interface StudentTask {
@@ -30,6 +43,16 @@ export interface StudentTask {
   feedback?: StudentTaskFeedback | null;
   submittedAt?: string | null;
   submittedPreview?: { kind: 'photo' | 'audio' | 'video'; label: string; url?: string }[];
+  // ---- chỉ có ở bản thật, sau khi nạp chi tiết bài ----
+  isPractice?: boolean;
+  /** Đã nạp chi tiết (đề, cách nộp, nhận xét) chưa */
+  loaded?: boolean;
+  canSubmit?: boolean;
+  maxPhotos?: number;
+  maxMediaSeconds?: number;
+  /** Ảnh gốc trang đề cô đã quét */
+  originals?: { kind: string; url: string }[];
+  instructionsAudioUrl?: string | null;
 }
 
 export interface StudentPortalData {

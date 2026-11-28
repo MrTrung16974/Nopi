@@ -28,6 +28,30 @@ const isTodo = (i: StudentAssignmentItem) => i.status === 'assigned' || i.status
  * - Chế độ Nhí (lớp 1–5): Chép Con chào + loa đọc + nút "Làm ngay" rất to + lưới môn màu tươi có biểu tượng.
  * - Chế độ Teen (lớp 6–9): mặc định mở tab "Việc cần làm" theo hạn nộp, tab thứ hai là "Môn học".
  */
+/** Thoát chế độ học sinh: về tài khoản bố mẹ (nếu mở bằng "Cho con học") hoặc màn đăng nhập. */
+async function exitStudentMode() {
+  const viaGuardian = session.get().student?.viaGuardian ?? false;
+  if (!viaGuardian) await unregisterPush('student');
+  await api('/auth/logout', { method: 'POST', as: 'student' }).catch(() => undefined);
+  await session.setStudent(null);
+  router.replace(viaGuardian && session.get().adult ? '/phu-huynh' : '/dang-nhap');
+}
+
+/** Không tải được trang của con: cho thử lại, và có lối thoát (qua Cổng phụ huynh) để không bị kẹt. */
+function StudentHomeError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const [gate, setGate] = useState(false);
+  return (
+    <ThemeProvider mode="nhi">
+      <SafeAreaView style={{ flex: 1, padding: 24, gap: 16, justifyContent: 'center', backgroundColor: '#FFF7ED' }}>
+        <T>{message}</T>
+        <PrimaryButton icon="🔄" label="Thử lại" onPress={onRetry} />
+        <SecondaryButton label={vi.student.exit} onPress={() => setGate(true)} />
+        <ParentGate visible={gate} onPass={() => { setGate(false); void exitStudentMode(); }} onCancel={() => setGate(false)} />
+      </SafeAreaView>
+    </ThemeProvider>
+  );
+}
+
 function Home({ home }: { home: NonNullable<ReturnType<typeof useStudentHome>['data']> }) {
   const t = useTheme();
   const isNhi = t.mode === 'nhi';
@@ -56,11 +80,7 @@ function Home({ home }: { home: NonNullable<ReturnType<typeof useStudentHome>['d
 
   const exit = async () => {
     setGate(false);
-    const viaGuardian = student?.viaGuardian ?? false;
-    if (!viaGuardian) await unregisterPush('student');
-    await api('/auth/logout', { method: 'POST', as: 'student' }).catch(() => undefined);
-    await session.setStudent(null);
-    router.replace(viaGuardian && session.get().adult ? '/phu-huynh' : '/dang-nhap');
+    await exitStudentMode();
   };
 
   const heroTitle = home.classes.length === 0 ? vi.student.noClass : vi.todayCount(todo.length);
@@ -256,14 +276,7 @@ export default function StudentHomeScreen() {
     );
   }
   if (q.error || !q.data) {
-    return (
-      <ThemeProvider mode="nhi">
-        <SafeAreaView style={{ flex: 1, padding: 24, gap: 16, justifyContent: 'center', backgroundColor: '#FFF7ED' }}>
-          <T>{(q.error as Error | null)?.message ?? 'Có lỗi xảy ra'}</T>
-          <PrimaryButton icon="🔄" label="Thử lại" onPress={() => q.refetch()} />
-        </SafeAreaView>
-      </ThemeProvider>
-    );
+    return <StudentHomeError message={(q.error as Error | null)?.message ?? 'Có lỗi xảy ra'} onRetry={() => void q.refetch()} />;
   }
   return (
     <ThemeProvider mode={q.data.grade ? uiModeOfGrade(q.data.grade as Grade) : 'nhi'}>

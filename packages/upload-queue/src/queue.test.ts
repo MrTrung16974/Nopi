@@ -23,6 +23,7 @@ class FakeTransport implements QueueTransport {
   multipartSize = 0;
   serverParts = new Map<string, Map<number, string>>();
   submitted: string[][] = [];
+  currentOwner?: (as: UploadJob['as']) => string | null;
   private n = 0;
 
   private maybeFail(step: string, err: Error = netErr()) {
@@ -170,6 +171,43 @@ describe('hàng đợi nộp bài', () => {
     await q.processDue();
     expect(q.list()[0]!.state).toBe('done');
     expect(transport.calls.filter((c) => c === 'put:photo')).toHaveLength(1);
+  });
+
+  it('hết phiên đăng nhập hoặc file trên máy đã mất: dừng và báo, không thử lại mãi', async () => {
+    const { transport, make, tick } = setup();
+    const q = make();
+    transport.putFile = async () => {
+      transport.calls.push('put');
+      throw apiErr('file_missing', 'ENOENT');
+    };
+    await q.enqueue({ studentAssignmentId: 'sa1', as: 'student', files: [photo] });
+    await q.processDue();
+    expect(q.list()[0]).toMatchObject({ state: 'failed', error: expect.stringContaining('không còn nữa') });
+
+    transport.requestUpload = async () => {
+      transport.calls.push('request');
+      throw apiErr('unauthenticated', 'Bạn cần đăng nhập');
+    };
+    await q.enqueue({ studentAssignmentId: 'sa2', as: 'student', files: [photo] });
+    await q.processDue();
+    tick(60_000);
+    await q.processDue();
+    expect(transport.calls.filter((c) => c === 'request')).toHaveLength(1);
+    expect(q.list()[1]).toMatchObject({ state: 'failed', error: expect.stringContaining('Đăng nhập lại') });
+  });
+
+  it('máy đổi sang tài khoản khác: việc của người cũ tạm dừng, người cũ đăng nhập lại thì gửi tiếp', async () => {
+    const { transport, make } = setup();
+    const q = make();
+    let current: string | null = 'hs-B';
+    transport.currentOwner = () => current;
+    await q.enqueue({ studentAssignmentId: 'sa1', as: 'student', ownerId: 'hs-A', files: [photo] });
+    await q.processDue();
+    expect(transport.calls).toEqual([]);
+    expect(q.list()[0]!.state).toBe('pending');
+    current = 'hs-A';
+    await q.processDue();
+    expect(q.list()[0]!.state).toBe('done');
   });
 
   it('không có mạng thì không làm gì; báo tiến độ cho màn "Đang gửi…"', async () => {

@@ -14,6 +14,34 @@ export const createSchoolSchema = z.object({
 export const schoolSchema = z.object({ id: z.uuid(), name: z.string(), kind: z.enum(['school', 'family']) });
 export const mySchoolSchema = schoolSchema.extend({ roles: z.array(z.enum(SCHOOL_ROLES)) });
 
+// ===== Quản trị hệ thống: danh sách trường =====
+export const SCHOOL_STATUSES = ['active', 'locked'] as const;
+export const adminSchoolPersonSchema = z.object({ id: z.uuid(), fullName: z.string(), phone: z.string().nullable(), status: z.enum(['invited', 'active', 'locked']) });
+export const adminSchoolSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  status: z.enum(SCHOOL_STATUSES),
+  createdAt: z.string(),
+  classCount: z.number().int(),
+  studentCount: z.number().int(),
+  teacherCount: z.number().int(),
+  admins: z.array(adminSchoolPersonSchema),
+  /** Hợp đồng/gói còn hạn (null = chưa có hoặc đã hết) */
+  contract: z.object({ planName: z.string().nullable(), until: z.string().nullable(), status: z.string() }).nullable(),
+});
+export type AdminSchool = z.infer<typeof adminSchoolSchema>;
+export const adminSchoolListSchema = z.object({ items: z.array(adminSchoolSchema), total: z.number().int(), page: z.number().int(), pageSize: z.number().int() });
+export const adminSchoolQuerySchema = z.object({
+  q: z.string().trim().max(100).optional(),
+  status: z.enum(SCHOOL_STATUSES).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+export const updateSchoolSchema = z
+  .object({ name: z.string().trim().min(3).max(200).optional(), status: z.enum(SCHOOL_STATUSES).optional() })
+  .refine((v) => v.name !== undefined || v.status !== undefined, 'Không có gì để cập nhật');
+export const addSchoolAdminSchema = z.object({ fullName: personNameSchema, phone: vnPhoneSchema });
+
 export const createAcademicYearSchema = z
   .object({ name: z.string().regex(/^\d{4}-\d{4}$/, 'Tên năm học dạng 2026-2027'), startsOn: isoDate, endsOn: isoDate })
   .refine((v) => v.startsOn < v.endsOn, { message: 'Ngày kết thúc phải sau ngày bắt đầu', path: ['endsOn'] });

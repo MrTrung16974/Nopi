@@ -2,7 +2,7 @@
 import { studentAuthResponseSchema } from '@nopi/contracts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChepConSvg } from '@/components/ChepConSvg';
 import { call, errorText } from '@/lib/client';
 import { studentWebSession } from '@/lib/student-client';
@@ -16,6 +16,10 @@ export default function StudentWebLoginPage() {
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Đã đăng nhập rồi thì vào thẳng trang bài tập
+  useEffect(() => {
+    if (studentWebSession.get()) router.replace('/hoc-sinh');
+  }, []);
 
   const login = async (path: string, body: unknown) => {
     setBusy(true);
@@ -64,9 +68,14 @@ export default function StudentWebLoginPage() {
               Mã trên thẻ của con
               <input
                 value={card}
-                onChange={(e) => setCard(e.target.value.toUpperCase())}
+                onChange={(e) => setCard(e.target.value.trim().replace(/^nopi:\/\/student-card\//i, '').toUpperCase())}
                 placeholder="Ví dụ: ABC-DEF-GHJK"
                 autoComplete="off"
+                autoFocus
+                onKeyDown={(e) => {
+                  // Đầu đọc QR cắm USB "gõ" mã rồi Enter → đăng nhập luôn
+                  if (e.key === 'Enter' && card.replace(/\W/g, '').length >= 6) void login('/auth/student/card', { code: card });
+                }}
               />
             </label>
             <button
@@ -106,10 +115,10 @@ export default function StudentWebLoginPage() {
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, display: 'grid', gap: 8, textAlign: 'center' }}>
           <div className="muted" style={{ fontSize: 13.5 }}>Chưa có thẻ? Trải nghiệm thử giao diện học sinh ngay:</div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link href="/hoc-sinh?demo=nhi" className="btn" style={{ minHeight: 40, fontSize: 13.5, borderRadius: 999 }}>
+            <Link href="/trai-nghiem?che-do=nhi" className="btn" style={{ minHeight: 40, fontSize: 13.5, borderRadius: 999 }}>
               🐟 Thử Chế độ Nhí (Lớp 1–5)
             </Link>
-            <Link href="/hoc-sinh?demo=teen" className="btn" style={{ minHeight: 40, fontSize: 13.5, borderRadius: 999 }}>
+            <Link href="/trai-nghiem?che-do=teen" className="btn" style={{ minHeight: 40, fontSize: 13.5, borderRadius: 999 }}>
               ⚡ Thử Chế độ Teen (Lớp 6–9)
             </Link>
           </div>

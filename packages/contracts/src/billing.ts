@@ -29,6 +29,15 @@ export const checkoutSchema = z.object({
   /** Trang quay về sau khi thanh toán (web) */
   returnUrl: z.url().optional(),
 });
+/** Cổng thanh toán web đang bật trên server (GET /billing/payment-methods). Rỗng = chưa mở bán trên web. */
+export const PAYMENT_PROVIDER_NAMES: Record<(typeof WEB_PAYMENT_PROVIDERS)[number], string> = {
+  fake: 'Thanh toán thử (dev)',
+  momo: 'Ví MoMo',
+  zalopay: 'ZaloPay',
+  vnpay: 'VNPay (thẻ ATM / QR ngân hàng)',
+};
+export const paymentMethodSchema = z.object({ id: z.enum(WEB_PAYMENT_PROVIDERS), name: z.string() });
+export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
 export const checkoutResponseSchema = z.object({ orderId: z.uuid(), payUrl: z.string() });
 export const orderStatusSchema = z.object({ orderId: z.uuid(), status: z.enum(['pending', 'paid', 'failed', 'expired']) });
 

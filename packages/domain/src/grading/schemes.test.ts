@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { completionLevelScheme, gradingSchemes, parseEvaluation, score10Scheme } from './schemes.js';
+import { completionLevelScheme, gradingSchemes, parseEvaluation, parseScoreInput, score10Scheme } from './schemes.js';
 import { Registry } from '../shared/registry.js';
 
 describe('thang đánh giá', () => {
@@ -29,6 +29,19 @@ describe('thang đánh giá', () => {
 
   it('điểm hiển thị kiểu Việt Nam', () => {
     expect(score10Scheme.studentView({ score: 8.5 }, 'lower_secondary').label).toBe('8,5');
+  });
+
+  it('ô điểm: trống không thành 0, nhận dấu phẩy, kiểm khoảng và bước 0,25', () => {
+    expect(parseScoreInput('')).toMatchObject({ ok: false });
+    expect(parseScoreInput('   ')).toMatchObject({ ok: false });
+    expect(parseScoreInput('0')).toEqual({ ok: true, score: 0 });
+    expect(parseScoreInput('8,5')).toEqual({ ok: true, score: 8.5 });
+    expect(parseScoreInput('7.75')).toEqual({ ok: true, score: 7.75 });
+    expect(parseScoreInput('10')).toEqual({ ok: true, score: 10 });
+    expect(parseScoreInput('10,5')).toMatchObject({ ok: false });
+    expect(parseScoreInput('-1')).toMatchObject({ ok: false });
+    expect(parseScoreInput('8,3')).toMatchObject({ ok: false });
+    expect(parseScoreInput('abc')).toMatchObject({ ok: false });
   });
 
   it('registry chặn đăng ký trùng', () => {

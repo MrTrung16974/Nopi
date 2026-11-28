@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Header, HttpCode, Inject, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { grantContractSchema } from '@nopi/contracts';
+import { grantContractSchema, PAYMENT_PROVIDER_NAMES, WEB_PAYMENT_PROVIDERS, type PaymentMethod } from '@nopi/contracts';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { AppError, CurrentActor, Public, ZodPipe, type Actor } from '../../../platform/index.js';
@@ -23,6 +23,16 @@ export class BillingController {
   @Get('billing/plans')
   plans(@Query(new ZodPipe(buyerQuery)) q: z.infer<typeof buyerQuery>) {
     return this.billing.plans(q.buyer);
+  }
+
+  /** Cổng thanh toán web đang bật (theo PAYMENT_PROVIDERS) — web chỉ hiện các cổng này, không tự đoán. */
+  @Public()
+  @Get('billing/payment-methods')
+  paymentMethods(): PaymentMethod[] {
+    return this.gateways
+      .map((g) => g.id)
+      .filter((id): id is PaymentMethod['id'] => (WEB_PAYMENT_PROVIDERS as readonly string[]).includes(id))
+      .map((id) => ({ id, name: PAYMENT_PROVIDER_NAMES[id] }));
   }
 
   @Get('billing/orders/:id')

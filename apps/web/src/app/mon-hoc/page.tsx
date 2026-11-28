@@ -98,7 +98,7 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
                   🔊 Nghe đề
                 </span>
                 <Link
-                  href="/hoc-sinh?demo=nhi"
+                  href="/trai-nghiem?che-do=nhi"
                   className="btn primary"
                   style={{ borderRadius: 999, padding: '0 24px', minHeight: 52, fontSize: 17 }}
                 >
@@ -107,7 +107,7 @@ export default async function SubjectsPage({ searchParams }: { searchParams: Pro
               </>
             ) : (
               <Link
-                href="/hoc-sinh?demo=teen"
+                href="/trai-nghiem?che-do=teen"
                 className="btn primary"
                 style={{ borderRadius: 14, padding: '0 20px', minHeight: 46, fontSize: 14.5 }}
               >

@@ -6,7 +6,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { AppError, DB, type Actor, type UserActor } from '../../../platform/index.js';
 import { GuardianService } from '../../identity/public-api.js';
 
-const { schoolMembers, classes, teachingAssignments, enrollments } = schema;
+const { schoolMembers, schools, classes, teachingAssignments, enrollments } = schema;
 
 export type ClassRow = typeof classes.$inferSelect;
 
@@ -26,12 +26,31 @@ export class AccessService {
     return actor;
   }
 
+  /**
+   * Vai trò của người dùng ở một trường/không gian.
+   * `guardian_owner` (bố mẹ chủ không gian gia đình) CHỈ có hiệu lực ở trường kind=family —
+   * nếu dữ liệu lỡ gán vai trò này ở trường thật, nó bị bỏ qua thay vì cho quản lý mọi lớp.
+   */
   async rolesIn(userId: string, schoolId: string): Promise<SchoolRole[]> {
     const rows = await this.db
-      .select({ role: schoolMembers.role })
+      .select({ role: schoolMembers.role, kind: schools.kind, status: schools.status })
       .from(schoolMembers)
+      .innerJoin(schools, eq(schools.id, schoolMembers.schoolId))
       .where(and(eq(schoolMembers.userId, userId), eq(schoolMembers.schoolId, schoolId)));
-    return rows.map((r) => r.role as SchoolRole);
+    // Trường bị quản trị hệ thống tạm khoá → nhân sự trường không còn vai trò nào ở đó
+    return rows
+      .filter((r) => r.status === 'active')
+      .filter((r) => r.role !== 'guardian_owner' || r.kind === 'family')
+      .map((r) => r.role as SchoolRole);
+  }
+
+  /**
+   * Chặn thao tác ở trường đang tạm khoá (giao bài, chấm bài, quản lý học sinh…).
+   * Quản trị hệ thống vẫn làm được để hỗ trợ. Học sinh/phụ huynh vẫn xem được bài cũ.
+   */
+  async requireSchoolActive(actor: Actor, schoolId: string) {
+    if (actor.kind === 'user' && actor.isSystemAdmin) return;
+    if (!(await this.isSchoolActive(schoolId))) throw new AppError('forbidden', 'Trường đang tạm khoá. Nhà trường liên hệ Nopi để mở lại nhé.');
   }
 
   async requireSchoolRole(actor: Actor, schoolId: string, roles: SchoolRole[]): Promise<UserActor> {
@@ -48,6 +67,11 @@ export class AccessService {
     const [c] = await this.db.select().from(classes).where(eq(classes.id, classId));
     if (!c) throw new AppError('not_found', 'Không tìm thấy lớp');
     return c;
+  }
+
+  async isSchoolActive(schoolId: string) {
+    const [s] = await this.db.select({ status: schools.status }).from(schools).where(eq(schools.id, schoolId));
+    return s?.status !== 'locked';
   }
 
   /** Giáo viên của lớp = chủ nhiệm hoặc đang được phân công dạy ít nhất một môn ở lớp. */
@@ -77,6 +101,7 @@ export class AccessService {
     if (user.isSystemAdmin) return { user, cls };
     const roles = await this.rolesIn(user.userId, cls.schoolId);
     if (roles.includes('admin') || roles.includes('guardian_owner')) return { user, cls };
+    await this.requireSchoolActive(user, cls.schoolId);
     const ok = opts.homeroomOnly ? cls.homeroomTeacherId === user.userId : await this.isClassTeacher(user.userId, cls);
     if (!ok) throw new AppError('forbidden', 'Bạn không phụ trách lớp này');
     return { user, cls };
@@ -100,7 +125,8 @@ export class AccessService {
     if (user.isSystemAdmin || (await this.guardians.isGuardian(user.userId, studentId))) return { user, grade };
     for (const cls of current) {
       const roles = await this.rolesIn(user.userId, cls.schoolId);
-      if (roles.includes('admin') || (await this.isClassTeacher(user.userId, cls))) return { user, grade };
+      if (roles.includes('admin')) return { user, grade };
+      if ((await this.isClassTeacher(user.userId, cls)) && (await this.isSchoolActive(cls.schoolId))) return { user, grade };
     }
     throw new AppError('forbidden', 'Bạn không có quyền với học sinh này');
   }

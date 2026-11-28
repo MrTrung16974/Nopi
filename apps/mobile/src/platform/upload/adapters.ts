@@ -1,9 +1,10 @@
 import { mediaViewSchema, multipartStatusSchema, studentAssignmentDetailSchema, uploadTicketSchema } from '@nopi/contracts';
-import type { QueuedFile, QueueStorage, QueueTransport, UploadJob } from '@nopi/upload-queue';
+import { FILE_MISSING, type QueuedFile, type QueueStorage, type QueueTransport, type UploadJob } from '@nopi/upload-queue';
 import { fetch as expoFetch } from 'expo/fetch';
 import { File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { api, ApiError } from '../api';
+import { session } from '../session';
 
 const web = Platform.OS === 'web';
 const KEY = 'nopi.upload-queue';
@@ -39,12 +40,34 @@ const httpError = (status: number, what: string) =>
   // 4xx từ kho (URL hết hạn, sai chữ ký) → lỗi tạm, hàng đợi sẽ xin URL mới; 5xx → thử lại
   Object.assign(new Error(`${what} ${status}`), { code: 'network', status });
 
-/** Đọc file trên máy thành Blob/bytes để tải lên (web: blob:/data: URL từ camera, MediaRecorder). */
+const fileMissing = (uri: string) => Object.assign(new Error(`Không còn file ${uri}`), { code: FILE_MISSING });
+
+/**
+ * Đọc file trên máy thành Blob để tải lên (web: blob:/data: URL từ camera, MediaRecorder).
+ * blob: URL mất sau khi tải lại trang → báo "file không còn" thay vì thử lại mãi.
+ */
 async function webBlob(uri: string) {
-  return (await globalThis.fetch(uri)).blob();
+  try {
+    return await (await globalThis.fetch(uri)).blob();
+  } catch {
+    throw fileMissing(uri);
+  }
+}
+
+/** Điện thoại: file trong bộ nhớ đệm có thể bị hệ điều hành dọn. */
+function nativeFile(uri: string) {
+  const f = new File(uri);
+  if (!f.exists) throw fileMissing(uri);
+  return f;
 }
 
 export const queueTransport: QueueTransport = {
+  /** Việc nộp chỉ chạy khi máy vẫn đăng nhập đúng tài khoản đã bấm nộp. */
+  currentOwner(as) {
+    const s = session.get();
+    return as === 'student' ? (s.student?.student.id ?? null) : (s.adult?.user.id ?? null);
+  },
+
   async isOnline() {
     return web ? globalThis.navigator?.onLine !== false : true; // điện thoại: dựa vào lỗi mạng để thử lại
   },
@@ -64,7 +87,7 @@ export const queueTransport: QueueTransport = {
       if (!r.ok) throw httpError(r.status, 'PUT');
       return;
     }
-    const r = await new File(file.localUri).upload(url, { httpMethod: 'PUT', headers, mimeType: file.mimeType });
+    const r = await nativeFile(file.localUri).upload(url, { httpMethod: 'PUT', headers, mimeType: file.mimeType });
     if (r.status < 200 || r.status >= 300) throw httpError(r.status, 'PUT');
   },
 
@@ -74,7 +97,7 @@ export const queueTransport: QueueTransport = {
       r = await globalThis.fetch(url, { method: 'PUT', body: (await webBlob(file.localUri)).slice(start, end) });
     } else {
       // Đọc đúng đoạn [start, end) — không nạp cả video vào bộ nhớ
-      const handle = new File(file.localUri).open();
+      const handle = nativeFile(file.localUri).open();
       let bytes: Uint8Array<ArrayBuffer>;
       try {
         handle.offset = start;

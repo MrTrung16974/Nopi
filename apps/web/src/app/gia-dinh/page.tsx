@@ -1,5 +1,5 @@
 'use client';
-import { checkoutResponseSchema, familySpaceSchema, orderStatusSchema, planSchema } from '@nopi/contracts';
+import { checkoutResponseSchema, familySpaceSchema, orderStatusSchema, paymentMethodSchema, planSchema, type PaymentMethod } from '@nopi/contracts';
 import { vi } from '@nopi/copy';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -15,8 +15,12 @@ const PERIOD: Record<string, string> = { month: '/tháng', year: '/năm', school
 function FamilyPage() {
   const fam = useApi(() => call('/family-spaces/mine', { schema: z.object({ space: familySpaceSchema.nullable() }) }), []);
   const plans = useApi(() => call('/billing/plans?buyer=family', { schema: z.array(planSchema), auth: false }), []);
+  const methods = useApi(() => call('/billing/payment-methods', { schema: z.array(paymentMethodSchema), auth: false }), []);
+  const [method, setMethod] = useState<PaymentMethod['id'] | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const space = fam.data?.space;
+  // Một cổng → chọn sẵn; nhiều cổng → phụ huynh chọn
+  const provider = method ?? (methods.data?.length === 1 ? methods.data[0]!.id : null);
 
   // Quay về từ cổng thanh toán: ?order=… → hỏi trạng thái đơn
   useEffect(() => {
@@ -33,8 +37,9 @@ function FamilyPage() {
           await fam.reload();
           history.replaceState(null, '', '/gia-dinh');
         }
-      } catch {
+      } catch (e) {
         clearInterval(id);
+        setMsg({ ok: false, text: `Chưa kiểm tra được đơn hàng: ${errorText(e)}. Tải lại trang sau ít phút để xem gói đã mở chưa.` });
       }
     }, 1000);
     return () => clearInterval(id);
@@ -53,9 +58,10 @@ function FamilyPage() {
   const buy = async (planId: string) => {
     if (!space) return;
     setMsg(null);
+    if (!provider) return setMsg({ ok: false, text: 'Bạn chọn cách thanh toán trước nhé.' });
     try {
       // Server gắn ?order=<mã đơn> vào trang quay về
-      const co = await call(`/family-spaces/${space.id}/checkout`, { method: 'POST', body: { planId, provider: 'fake', returnUrl: `${location.origin}/gia-dinh` }, schema: checkoutResponseSchema });
+      const co = await call(`/family-spaces/${space.id}/checkout`, { method: 'POST', body: { planId, provider, returnUrl: `${location.origin}/gia-dinh` }, schema: checkoutResponseSchema });
       location.href = co.payUrl;
     } catch (e) {
       setMsg({ ok: false, text: errorText(e) });
@@ -92,12 +98,25 @@ function FamilyPage() {
             </div>
           ))}
           <h2>Gói</h2>
+          {methods.data && methods.data.length === 0 && (
+            <p className="muted">Hiện chưa mở thanh toán trực tuyến trên web. Gói gia đình sẽ sớm được mở bán.</p>
+          )}
+          {methods.data && methods.data.length > 1 && (
+            <div className="row" role="radiogroup" aria-label="Cách thanh toán">
+              {methods.data.map((m) => (
+                <label key={m.id} className="card" style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                  <input type="radio" name="payment-method" checked={provider === m.id} onChange={() => setMethod(m.id)} />
+                  {m.name}
+                </label>
+              ))}
+            </div>
+          )}
           <div className="row">
             {plans.data?.map((p) => (
               <div key={p.id} className="card stack" style={{ minWidth: 220 }}>
                 <strong>{p.name}</strong>
                 <span style={{ fontSize: 22, fontWeight: 700 }}>{p.priceVnd.toLocaleString('vi-VN')}đ<span className="muted" style={{ fontSize: 14 }}>{PERIOD[p.period]}</span></span>
-                <button className="primary" onClick={() => buy(p.id)}>{space.entitlement.active && space.entitlement.status !== 'trial' ? 'Gia hạn' : 'Mua'}</button>
+                <button className="primary" onClick={() => buy(p.id)} disabled={!methods.data?.length}>{space.entitlement.active && space.entitlement.status !== 'trial' ? 'Gia hạn' : 'Mua'}</button>
               </div>
             ))}
           </div>

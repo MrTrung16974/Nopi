@@ -28,6 +28,11 @@ export interface UploadJob {
   studentAssignmentId: string;
   /** Ai nộp: học sinh, hoặc phụ huynh nộp hộ */
   as: 'student' | 'adult';
+  /**
+   * Tài khoản đã bấm nộp (id học sinh / người lớn). Máy đổi sang tài khoản khác thì việc này
+   * tạm dừng, KHÔNG gửi bằng token của người khác; người cũ đăng nhập lại thì gửi tiếp.
+   */
+  ownerId?: string;
   files: QueuedFile[];
   note?: string;
   state: JobState;
@@ -47,6 +52,9 @@ export interface QueueStorage {
 }
 
 /** Lỗi API có mã — để phân biệt lỗi thử lại được (mạng) và lỗi dừng hẳn (dữ liệu sai). */
+/** Mã lỗi riêng của hàng đợi: file trên máy không còn (hệ điều hành dọn bộ nhớ đệm, web tải lại trang…). */
+export const FILE_MISSING = 'file_missing';
+
 export interface TransportError extends Error {
   code?: string;
   status?: number;
@@ -64,4 +72,6 @@ export interface QueueTransport {
   submit(job: UploadJob, mediaIds: string[], note?: string): Promise<StudentAssignmentDetail>;
   /** Có mạng không (NetInfo / navigator.onLine). */
   isOnline(): Promise<boolean>;
+  /** Tài khoản đang đăng nhập theo vai (để so với job.ownerId). Không cài = không kiểm. */
+  currentOwner?(as: UploadJob['as']): string | null;
 }

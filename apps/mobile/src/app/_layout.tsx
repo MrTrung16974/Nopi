@@ -1,12 +1,35 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { router, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { session, useSession } from '@/platform/session';
 import { startUploadLoop } from '@/platform/upload/queue';
 import { useTappedNotificationData } from '@/platform/notification-response';
 import { routeForNotification } from '@/platform/push';
+
+/**
+ * Theo dõi phiên đăng nhập:
+ * - Đổi/thoát tài khoản (người lớn hoặc học sinh) → xoá cache dữ liệu, để người sau trên cùng máy
+ *   không thấy dữ liệu của người trước (khoá cache như ['me'], ['inbox'] không gắn với người dùng).
+ * - Mất phiên (đăng xuất, refresh token hết hạn) → về màn gốc, màn gốc tự chọn đăng nhập / trang chủ.
+ */
+function SessionWatcher() {
+  const qc = useQueryClient();
+  const { adult, student } = useSession();
+  const key = `${adult?.user.id ?? '-'}|${student?.student.id ?? '-'}`;
+  const prev = useRef(key);
+  useEffect(() => {
+    if (prev.current === key) return;
+    const [oldAdult, oldStudent] = prev.current.split('|');
+    prev.current = key;
+    qc.clear();
+    const lostAdult = oldAdult !== '-' && !adult;
+    const lostStudent = oldStudent !== '-' && !student;
+    if (lostAdult || lostStudent) router.replace('/');
+  }, [key]);
+  return null;
+}
 
 export default function RootLayout() {
   const [client] = useState(
@@ -34,6 +57,7 @@ export default function RootLayout() {
   }
   return (
     <QueryClientProvider client={client}>
+      <SessionWatcher />
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerTitleStyle: { fontWeight: '700' }, headerBackTitle: 'Quay lại' }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />

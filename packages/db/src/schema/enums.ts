@@ -29,3 +29,6 @@ export const PLAN_PERIODS = ['month', 'year', 'school_year'] as const;
 export const SUBSCRIPTION_CHANNELS = ['apple', 'google', 'web', 'contract'] as const;
 export const SUBSCRIPTION_STATUSES = ['trial', 'active', 'grace', 'canceled', 'expired'] as const;
 export const PAYMENT_STATUSES = ['pending', 'paid', 'refunded', 'failed'] as const;
+
+/** Trạng thái trường: locked = tạm khoá (hết hợp đồng…): nhân sự trường không thao tác được, dữ liệu giữ nguyên. */
+export const SCHOOL_STATUSES = ['active', 'locked'] as const;

@@ -1,10 +1,18 @@
-import type { QueuedFile, QueueStorage, QueueTransport, TransportError, UploadJob } from './types.js';
+import { FILE_MISSING, type QueuedFile, type QueueStorage, type QueueTransport, type TransportError, type UploadJob } from './types.js';
 
-/** Lỗi do dữ liệu/quyền (không phải mạng) → không thử lại, báo cho người dùng. */
-const PERMANENT = new Set(['validation_failed', 'forbidden', 'not_found', 'conflict']);
+/**
+ * Lỗi do dữ liệu/quyền/phiên (không phải mạng) → không thử lại, báo cho người dùng.
+ * Thử lại mãi các lỗi này chỉ làm màn hình hiện "Đang gửi…" không bao giờ xong.
+ */
+const PERMANENT = new Set(['validation_failed', 'forbidden', 'not_found', 'conflict', 'unauthenticated', FILE_MISSING]);
 const isPermanent = (e: unknown) => {
   const err = e as TransportError;
   return Boolean(err?.code && PERMANENT.has(err.code));
+};
+/** Câu báo dễ hiểu cho các lỗi mà thông điệp kỹ thuật không giúp được người dùng. */
+const FRIENDLY: Record<string, string> = {
+  unauthenticated: 'Phiên đăng nhập đã hết. Đăng nhập lại rồi bấm «Gửi lại» nhé.',
+  [FILE_MISSING]: 'Ảnh/video/ghi âm trên máy không còn nữa. Bấm «Bỏ» rồi chụp hoặc ghi lại nhé.',
 };
 
 export interface QueueOptions {
@@ -73,12 +81,13 @@ export class UploadQueue {
     this.emit();
   }
 
-  async enqueue(input: { studentAssignmentId: string; as: 'student' | 'adult'; files: Omit<QueuedFile, 'mediaId' | 'uploaded' | 'completed' | 'parts'>[]; note?: string }) {
+  async enqueue(input: { studentAssignmentId: string; as: 'student' | 'adult'; ownerId?: string; files: Omit<QueuedFile, 'mediaId' | 'uploaded' | 'completed' | 'parts'>[]; note?: string }) {
     await this.load();
     const job: UploadJob = {
       id: this.newId(),
       studentAssignmentId: input.studentAssignmentId,
       as: input.as,
+      ownerId: input.ownerId,
       files: input.files.map((f) => ({ ...f })),
       note: input.note,
       state: 'pending',
@@ -116,6 +125,8 @@ export class UploadQueue {
       if (!(await this.transport.isOnline())) return;
       for (const job of this.jobs) {
         if (job.state !== 'pending' || job.nextAttemptAt > this.now()) continue;
+        // Máy đang đăng nhập tài khoản khác → để dành, không gửi bằng token của người khác
+        if (job.ownerId && this.transport.currentOwner && this.transport.currentOwner(job.as) !== job.ownerId) continue;
         await this.runJob(job);
       }
       // Dọn việc xong quá 1 ngày
@@ -153,7 +164,7 @@ export class UploadQueue {
     } catch (e) {
       if (isPermanent(e)) {
         job.state = 'failed';
-        job.error = (e as Error).message;
+        job.error = FRIENDLY[(e as TransportError).code ?? ''] ?? (e as Error).message;
       } else {
         job.state = 'pending';
         job.nextAttemptAt = this.now() + this.backoff(job.attempts);

@@ -92,6 +92,13 @@
       "when": 1795596740767,
       "tag": "0012_notification_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795613668177,
+      "tag": "0013_school_status",
+      "breakpoints": true
     }
   ]
 }

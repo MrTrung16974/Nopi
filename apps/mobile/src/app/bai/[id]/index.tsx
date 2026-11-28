@@ -19,6 +19,7 @@ import { api, ApiError } from '@/platform/api';
 import { draftStore, useDraft } from '@/platform/draft';
 import { useStudentMode } from '@/platform/student-mode';
 import { ThemeProvider, useTheme } from '@/platform/theme';
+import { queueTransport } from '@/platform/upload/adapters';
 import { kickUploads, uploadQueue, useUploadJobs } from '@/platform/upload/queue';
 
 const CAPTURE = { photo: '/bai/[id]/chup', video: '/bai/[id]/quay', audio: '/bai/[id]/ghi-am' } as const;
@@ -38,6 +39,7 @@ function AssignmentScreen({ id, as }: { id: string; as: 'student' | 'adult' }) {
   const draft = useDraft(id);
   const jobs = useUploadJobs(id);
   const [celebrate, setCelebrate] = useState(false);
+  const [practiceError, setPracticeError] = useState<string | null>(null);
   const pending = jobs.filter((j) => j.state !== 'failed');
   const failed = jobs.find((j) => j.state === 'failed');
   const wasPending = useRef(false);
@@ -64,7 +66,9 @@ function AssignmentScreen({ id, as }: { id: string; as: 'student' | 'adult' }) {
   const pct = Math.round((pending[0]?.progress ?? 0) * 100);
 
   const send = async () => {
-    await uploadQueue.enqueue({ studentAssignmentId: id, as, files: draft.map((f) => ({ ...f })) });
+    // Gắn người nộp: máy đổi tài khoản thì bài này không bị gửi bằng token của người khác
+    const ownerId = queueTransport.currentOwner?.(as) ?? undefined;
+    await uploadQueue.enqueue({ studentAssignmentId: id, as, ownerId, files: draft.map((f) => ({ ...f })) });
     draftStore.clear(id);
     setCelebrate(true);
     kickUploads();
@@ -163,15 +167,24 @@ function AssignmentScreen({ id, as }: { id: string; as: 'student' | 'adult' }) {
       )}
 
       {/* Bài tự luyện: em tự đánh dấu đã xong */}
-      {d.isPractice && d.status !== 'submitted' && (
-        <PrimaryButton
-          label={vi.scan.markDone}
-          onPress={async () => {
-            await api(`/student/practice/${id}/done`, { method: 'POST', as });
-            void qc.invalidateQueries({ queryKey: ['sa', id] });
-            void qc.invalidateQueries({ queryKey: ['student', 'assignments'] });
-          }}
-        />
+      {/* Chỉ chính em được đánh dấu (API chặn phụ huynh) → không hiện nút cho bố mẹ */}
+      {d.isPractice && d.status !== 'submitted' && as === 'student' && (
+        <>
+          <PrimaryButton
+            label={vi.scan.markDone}
+            onPress={async () => {
+              setPracticeError(null);
+              try {
+                await api(`/student/practice/${id}/done`, { method: 'POST', as });
+                void qc.invalidateQueries({ queryKey: ['sa', id] });
+                void qc.invalidateQueries({ queryKey: ['student', 'assignments'] });
+              } catch (e) {
+                setPracticeError(e instanceof ApiError ? e.friendly : 'Có lỗi xảy ra, thử lại nhé');
+              }
+            }}
+          />
+          {practiceError && <T variant="error">{practiceError}</T>}
+        </>
       )}
       {d.isPractice && d.status === 'submitted' && <T style={{ color: '#166534', fontWeight: '800' }}>✅ {vi.scan.done}</T>}
 
@@ -211,7 +224,11 @@ function AssignmentScreen({ id, as }: { id: string; as: 'student' | 'adult' }) {
             borderRadius: t.radius.card,
           }}
         >
-          <MascotBanner mood="celebrate" title={vi.sentToTeacher} subtitle="Con giỏi lắm! Bài đang được gửi ngay cho cô." />
+          <MascotBanner
+            mood="celebrate"
+            title={vi.sentToTeacher}
+            subtitle={as === 'student' ? 'Con giỏi lắm! Bài đang được gửi ngay cho cô.' : 'Đã nộp hộ con. Bài đang được gửi cho cô.'}
+          />
         </View>
       )}
 

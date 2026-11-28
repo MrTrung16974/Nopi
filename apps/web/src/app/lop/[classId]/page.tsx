@@ -1,6 +1,6 @@
 'use client';
 import { classStudentSchema, classTeachingSchema, printableCodeSchema } from '@nopi/contracts';
-import { canUsePinLogin, type Grade } from '@nopi/domain';
+import { canUsePinLogin, checkPin, PIN_PROBLEM_MESSAGES, type Grade } from '@nopi/domain';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { z } from 'zod';
@@ -67,8 +67,15 @@ function ClassPage() {
     }
   };
 
-  const issue = (kind: 'card' | 'invite', studentIds?: string[]) =>
-    run(async () => {
+  /** Cấp thẻ/phiếu mới làm thẻ/phiếu CŨ hết hiệu lực ngay → luôn hỏi lại trước. */
+  const issue = (kind: 'card' | 'invite', studentIds?: string[], name?: string) => {
+    const who = name ?? `cả lớp (${students.data?.length ?? 0} em)`;
+    const warn =
+      kind === 'card'
+        ? `In thẻ đăng nhập mới cho ${who}?\n\nThẻ cũ sẽ hết hiệu lực ngay: ${name ? 'em' : 'các em'} đang đăng nhập bằng thẻ cũ phải quét thẻ mới.`
+        : `In phiếu mời phụ huynh mới cho ${who}?\n\nPhiếu cũ chưa dùng sẽ hết hiệu lực. Phụ huynh đã liên kết rồi thì không bị ảnh hưởng.`;
+    if (!window.confirm(warn)) return;
+    return run(async () => {
       const items = await call(`/classes/${classId}/${kind === 'card' ? 'login-cards' : 'guardian-invites'}`, {
         method: 'POST',
         body: { studentIds },
@@ -76,10 +83,21 @@ function ClassPage() {
       });
       setPrint({ kind, items });
     });
+  };
 
-  const setPin = (studentId: string, name: string) => {
-    const pin = window.prompt(`Mã PIN 6 số mới cho ${name}:`);
-    if (pin) void run(async () => { await call(`/students/${studentId}/pin`, { method: 'PUT', body: { pin } }); await students.reload(); }, `Đã đặt PIN cho ${name}`);
+  // Đặt PIN bằng form (ẩn số, nhập 2 lần) thay cho window.prompt
+  const [pinFor, setPinFor] = useState<{ id: string; name: string } | null>(null);
+  const [pin, setPinValue] = useState({ a: '', b: '' });
+  const pinProblem = !/^\d{6}$/.test(pin.a) ? 'Mã PIN gồm 6 chữ số' : (() => { const p = checkPin(pin.a); return p ? PIN_PROBLEM_MESSAGES[p] : null; })();
+  const savePin = () => {
+    if (!pinFor || pinProblem || pin.a !== pin.b) return;
+    const { id, name } = pinFor;
+    void run(async () => {
+      await call(`/students/${id}/pin`, { method: 'PUT', body: { pin: pin.a } });
+      setPinFor(null);
+      setPinValue({ a: '', b: '' });
+      await students.reload();
+    }, `Đã đặt PIN cho ${name}`);
   };
 
   if (print) return <PrintSheet {...print} onClose={() => setPrint(null)} />;
@@ -92,6 +110,19 @@ function ClassPage() {
         <button onClick={() => issue('card')} disabled={!students.data?.length}>In thẻ đăng nhập cho cả lớp</button>
       </div>
       {msg && <p className={msg.ok ? 'ok' : 'error'} role="status">{msg.text}</p>}
+      {pinFor && (
+        <form className="card no-print" style={{ margin: '12px 0' }} onSubmit={(e) => { e.preventDefault(); savePin(); }}>
+          <strong>Đặt mã PIN cho {pinFor.name}</strong>
+          <div className="row" style={{ marginTop: 12, alignItems: 'flex-end' }}>
+            <label>PIN mới (6 số)<input type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} autoFocus value={pin.a} onChange={(e) => setPinValue({ ...pin, a: e.target.value.replace(/\D/g, '') })} /></label>
+            <label>Nhập lại<input type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={pin.b} onChange={(e) => setPinValue({ ...pin, b: e.target.value.replace(/\D/g, '') })} /></label>
+            <button type="submit" className="primary" disabled={Boolean(pinProblem) || pin.a !== pin.b}>Lưu PIN</button>
+            <button type="button" onClick={() => setPinFor(null)}>Huỷ</button>
+          </div>
+          {pin.a.length === 6 && pinProblem && <p className="error" style={{ margin: '8px 0 0' }}>{pinProblem}</p>}
+          {pin.b.length === 6 && !pinProblem && pin.a !== pin.b && <p className="error" style={{ margin: '8px 0 0' }}>Hai lần nhập chưa khớp</p>}
+        </form>
+      )}
       {students.error && <p className="error">{students.error}</p>}
 
       <h2>Học sinh ({students.data?.length ?? 0})</h2>
@@ -106,8 +137,8 @@ function ClassPage() {
                 <td>{s.birthDate ? s.birthDate.split('-').reverse().join('/') : '—'}</td>
                 <td>{s.guardianCount > 0 ? `${s.guardianCount} đã liên kết` : <span className="badge">Chưa có</span>}</td>
                 <td className="row" style={{ gap: 6 }}>
-                  <button onClick={() => issue('card', [s.id])}>Cấp lại thẻ</button>
-                  {grade && canUsePinLogin(grade) && <button onClick={() => setPin(s.id, s.fullName)}>{s.hasPin ? 'Đổi PIN' : 'Đặt PIN'}</button>}
+                  <button onClick={() => issue('card', [s.id], s.fullName)}>Cấp lại thẻ</button>
+                  {grade && canUsePinLogin(grade) && <button onClick={() => { setPinFor({ id: s.id, name: s.fullName }); setPinValue({ a: '', b: '' }); }}>{s.hasPin ? 'Đổi PIN' : 'Đặt PIN'}</button>}
                 </td>
               </tr>
             ))}

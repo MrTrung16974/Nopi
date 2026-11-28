@@ -5,6 +5,7 @@ import { BillingModule } from '../billing/public-api.js';
 import { FamilyService } from './application/family.service.js';
 import { FamilyController } from './http/family.controller.js';
 import { AccessService } from './application/access.service.js';
+import { AdminSchoolsService } from './application/admin-schools.service.js';
 import { ImportService } from './application/import.service.js';
 import { RosterService } from './application/roster.service.js';
 import { SchoolsService } from './application/schools.service.js';
@@ -20,7 +21,7 @@ import { SchoolsController } from './http/schools.controller.js';
 @Module({
   imports: [IdentityModule, CurriculumModule, BillingModule],
   controllers: [SchoolsController, ClassesController, ImportsController, StudentHomeController, FamilyController],
-  providers: [AccessService, SchoolsService, RosterService, TeachingService, ImportService, StudentHomeService, SpaceSettingsService, TeachingReader, FamilyService],
+  providers: [AccessService, AdminSchoolsService, SchoolsService, RosterService, TeachingService, ImportService, StudentHomeService, SpaceSettingsService, TeachingReader, FamilyService],
   exports: [AccessService, SpaceSettingsService, TeachingReader, FamilyService],
 })
 export class OrgModule {}

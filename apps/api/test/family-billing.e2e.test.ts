@@ -77,6 +77,8 @@ describe('không gian gia đình & thanh toán', () => {
     // Mua gói tháng
     const plans = (await api(t).get('/billing/plans?buyer=family')).json();
     expect(plans.map((p: { id: string }) => p.id)).toEqual(['family_monthly', 'family_yearly']); // gói dùng thử không bán
+    // Web chỉ hiện cổng đang bật trên server (test bật cổng giả lập)
+    expect((await api(t).get('/billing/payment-methods')).json()).toEqual([{ id: 'fake', name: 'Thanh toán thử (dev)' }]);
     const co = checkoutResponseSchema.parse((await mom.post(`/family-spaces/${space.id}/checkout`, { planId: 'family_monthly', provider: 'fake', returnUrl: 'http://localhost:3200/gia-dinh' })).json());
     expect(co.payUrl).toContain(`/v1/billing/fake/checkout/${co.orderId}`);
     expect(new URL(co.payUrl).searchParams.get('returnUrl')).toBe(`http://localhost:3200/gia-dinh?order=${co.orderId}`);

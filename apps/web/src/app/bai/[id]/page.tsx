@@ -1,6 +1,6 @@
 'use client';
 import { commentTemplateSchema, gradingRowSchema, remindResultSchema, teacherAssignmentSchema, type GradingRow, type MediaView } from '@nopi/contracts';
-import { stageOfGrade, STICKERS, type Grade } from '@nopi/domain';
+import { parseScoreInput, stageOfGrade, STICKERS, type Grade } from '@nopi/domain';
 import { statusStyle } from '@nopi/ui';
 import { vi } from '@nopi/copy';
 import { useParams } from 'next/navigation';
@@ -68,12 +68,19 @@ function GradingPage() {
     async (requiresRedo: boolean) => {
       if (!row?.latest || !scheme) return;
       setMsg(null);
-      try {
-        const body: Record<string, unknown> = { requiresRedo, comment: comment || undefined, sticker: sticker ?? undefined };
-        if (!requiresRedo) {
-          if (scheme === 'score_10') body.score = Number(score.replace(',', '.'));
-          else body.level = level ?? undefined;
+      const body: Record<string, unknown> = { requiresRedo, comment: comment || undefined, sticker: sticker ?? undefined };
+      if (!requiresRedo) {
+        if (scheme === 'score_10') {
+          // Ô trống không được hiểu là 0 điểm
+          const parsed = parseScoreInput(score);
+          if (!parsed.ok) return setMsg({ ok: false, text: parsed.error });
+          body.score = parsed.score;
+        } else {
+          if (!level) return setMsg({ ok: false, text: 'Thầy cô chưa chọn mức đánh giá' });
+          body.level = level;
         }
+      }
+      try {
         const updated = await call(`/submissions/${row.latest.id}/evaluation`, { method: 'PUT', body, schema: gradingRowSchema });
         rows.setData(list.map((r) => (r.studentAssignmentId === updated.studentAssignmentId ? updated : r)));
         setMsg({ ok: true, text: requiresRedo ? `Đã yêu cầu ${row.student.fullName} làm lại` : `Đã chấm ${row.student.fullName}` });
@@ -88,7 +95,10 @@ function GradingPage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
+      // Đang đứng trên nút/link: để Enter bấm đúng nút đó, không lưu nhầm
+      const onControl = e.target instanceof HTMLButtonElement || e.target instanceof HTMLAnchorElement;
+      if (onControl || e.altKey || ((e.ctrlKey || e.metaKey) && e.key !== 'Enter')) return;
       if (e.key === 'Enter' && (!typing || e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         void save(false);
@@ -96,7 +106,7 @@ function GradingPage() {
       if (typing) return;
       const levels = scheme ? LEVELS[scheme] : undefined;
       if (levels && /^[1-3]$/.test(e.key) && levels[Number(e.key) - 1]) setLevel(levels[Number(e.key) - 1]!);
-      if (e.key.toLowerCase() === 'r') void save(true);
+      if (e.key.toLowerCase() === 'r' && row && window.confirm(`Yêu cầu ${row.student.fullName} làm lại bài này?`)) void save(true);
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         const i = list.findIndex((r) => r.studentAssignmentId === row?.studentAssignmentId);
         const j = Math.max(0, Math.min(list.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)));

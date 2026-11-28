@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { ChepConSvg, type ChepConMood } from './ChepConSvg';
 import { ConfettiBurst, ParentGateModal, StickerBadge, useReadAloud } from './StudentEffects';
+import { errorText } from '@/lib/client';
+import { loadTaskDetail, mergeDetail, STUDENT_LOGIN, studentCall, studentLogout, submitStudentWork } from '@/lib/student-api';
 import {
   buildDemoNhi,
   buildDemoTeen,
-  studentWebSession,
+  type DraftFile,
   type StudentPortalData,
   type StudentSubject,
   type StudentTask,
@@ -48,7 +50,7 @@ function StatusPill({ status, isNhi }: { status: StudentTask['status']; isNhi: b
 }
 
 /** Ghi âm trực tiếp trên trình duyệt (nút tròn đỏ to + đồng hồ đếm). */
-function BrowserAudioRecorder({ onRecorded, isNhi }: { onRecorded: (label: string, url?: string) => void; isNhi: boolean }) {
+function BrowserAudioRecorder({ onRecorded, isNhi, allowSample }: { onRecorded: (f: DraftFile) => void; isNhi: boolean; allowSample: boolean }) {
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [err, setErr] = useState<string | null>(null);
@@ -78,11 +80,13 @@ function BrowserAudioRecorder({ onRecorded, isNhi }: { onRecorded: (label: strin
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
+      const startedAt = Date.now();
       mr.onstop = () => {
         stream.getTracks().forEach((tr) => tr.stop());
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        const url = URL.createObjectURL(blob);
-        onRecorded(`Ghi âm (${Math.max(1, seconds)} giây)`, url);
+        // Safari ghi mp4, Chrome/Firefox ghi webm → lấy đúng loại trình duyệt đã ghi
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
+        const durationS = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+        onRecorded({ kind: 'audio', label: `Ghi âm (${durationS} giây)`, url: URL.createObjectURL(blob), blob, durationS });
       };
       recRef.current = mr;
       setSeconds(0);
@@ -90,7 +94,11 @@ function BrowserAudioRecorder({ onRecorded, isNhi }: { onRecorded: (label: strin
       setRecording(true);
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
     } catch {
-      setErr('Trình duyệt chưa cấp quyền micro. Bạn có thể bấm nút bên dưới để dùng bản ghi mẫu thử trải nghiệm.');
+      setErr(
+        allowSample
+          ? 'Trình duyệt chưa cấp quyền micro. Bạn có thể bấm nút bên dưới để dùng bản ghi mẫu thử trải nghiệm.'
+          : 'Trình duyệt chưa cho dùng micro. Nhờ bố mẹ bấm biểu tượng ổ khoá cạnh thanh địa chỉ, cho phép Micro rồi thử lại nhé.',
+      );
     }
   };
 
@@ -142,9 +150,11 @@ function BrowserAudioRecorder({ onRecorded, isNhi }: { onRecorded: (label: strin
       {err && (
         <div style={{ display: 'grid', gap: 8, justifyItems: 'center', textAlign: 'center' }}>
           <div className="muted" style={{ fontSize: 13.5 }}>{err}</div>
-          <button type="button" onClick={() => onRecorded('Bản ghi âm đọc bài (12 giây)')} style={{ minHeight: 40, fontSize: 13.5 }}>
-            🎙️ Dùng bản ghi mẫu để thử nộp bài
-          </button>
+          {allowSample && (
+            <button type="button" onClick={() => onRecorded({ kind: 'audio', label: 'Bản ghi âm đọc bài (12 giây)' })} style={{ minHeight: 40, fontSize: 13.5 }}>
+              🎙️ Dùng bản ghi mẫu để thử nộp bài
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -163,7 +173,10 @@ export function StudentPortal({ initialMode = 'nhi', initialData }: { initialMod
   const [teenTab, setTeenTab] = useState<'todo' | 'subjects' | 'notify' | 'me'>('todo');
   const [activeSubject, setActiveSubject] = useState<StudentSubject | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [draftFiles, setDraftFiles] = useState<{ kind: 'photo' | 'audio' | 'video'; label: string; url?: string }[]>([]);
+  const [draftFiles, setDraftFiles] = useState<DraftFile[]>([]);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [taskLoading, setTaskLoading] = useState(false);
+  const live = !data.isDemo;
   const [showAudioPanel, setShowAudioPanel] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
@@ -199,23 +212,59 @@ export function StudentPortal({ initialMode = 'nhi', initialData }: { initialMod
 
   const pendingOf = (subjectId: number) => todoTasks.filter((t) => t.subject.id === subjectId).length;
 
+  const replaceTask = (next: StudentTask) =>
+    setData((prev) => ({ ...prev, tasks: prev.tasks.map((t) => (t.id === next.id ? next : t)) }));
+
   const openTask = (task: StudentTask) => {
     stop();
     setActiveTaskId(task.id);
     setDraftFiles([]);
     setShowAudioPanel(false);
+    setTaskError(null);
+    // Bản thật: nạp đề, cách nộp, nhận xét của bài (danh sách chỉ có tóm tắt)
+    if (live) {
+      setTaskLoading(!task.loaded);
+      loadTaskDetail(task)
+        .then(replaceTask)
+        .catch((e) => setTaskError(errorText(e)))
+        .finally(() => setTaskLoading(false));
+    }
   };
 
   const handleFilePick = (kind: 'photo' | 'video') => (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setDraftFiles((prev) => [...prev, { kind, label: file.name, url }]);
+    const files = [...(e.target.files ?? [])];
     e.target.value = '';
+    if (files.length === 0) return;
+    setTaskError(null);
+    const maxPhotos = activeTask?.maxPhotos;
+    const photosNow = draftFiles.filter((f) => f.kind === 'photo').length;
+    const room = kind === 'photo' && maxPhotos ? Math.max(0, maxPhotos - photosNow) : files.length;
+    if (room < files.length) setTaskError(`Bài này cô cho gửi tối đa ${maxPhotos} ảnh thôi nhé.`);
+    const picked = files.slice(0, room).map((file) => ({ kind, label: file.name, url: URL.createObjectURL(file), blob: file }));
+    setDraftFiles((prev) => [...prev, ...picked]);
   };
 
-  const submitTask = () => {
+  const submitTask = async () => {
     if (!activeTask || draftFiles.length === 0) return;
+    setTaskError(null);
+    if (live) {
+      setSubmitting(true);
+      try {
+        const detail = await submitStudentWork(activeTask.id, draftFiles);
+        replaceTask(mergeDetail(activeTask, detail));
+        setData((prev) => ({ ...prev, waterDrops: prev.waterDrops + 1 }));
+        setDraftFiles([]);
+        setShowAudioPanel(false);
+        setCelebrate(true);
+        setTimeout(() => setCelebrate(false), 3400);
+      } catch (e) {
+        // Giữ nguyên bài con đã chụp; file nào đã lên kho (có mediaId) thì gửi lại không tải lại
+        setTaskError(`Chưa gửi được: ${errorText(e)}`);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     setSubmitting(true);
     setTimeout(() => {
       setSubmitting(false);
@@ -235,11 +284,15 @@ export function StudentPortal({ initialMode = 'nhi', initialData }: { initialMod
     }, 1100);
   };
 
-  const handleExit = () => {
+  const handleExit = async () => {
     stop();
-    studentWebSession.set(null);
     setGateOpen(false);
-    router.push('/dang-nhap');
+    if (live) {
+      await studentLogout();
+      router.push(STUDENT_LOGIN);
+    } else {
+      router.push('/dang-nhap');
+    }
   };
 
   const waterTarget = 5;
@@ -439,9 +492,24 @@ export function StudentPortal({ initialMode = 'nhi', initialData }: { initialMod
                   gap: 14,
                 }}
               >
-                <div style={{ fontSize: isNhi ? 20 : 16, lineHeight: 1.55, color: '#0F172A', fontWeight: 600 }}>
-                  {activeTask.instructions}
+                <div style={{ fontSize: isNhi ? 20 : 16, lineHeight: 1.55, color: '#0F172A', fontWeight: 600, whiteSpace: 'pre-line' }}>
+                  {taskLoading ? 'Chép Con đang mở đề bài…' : activeTask.instructions}
                 </div>
+                {activeTask.instructionsAudioUrl && (
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>🎧 Lời cô dặn</div>
+                    <audio controls src={activeTask.instructionsAudioUrl} style={{ width: '100%', maxWidth: 360 }} />
+                  </div>
+                )}
+                {activeTask.originals && activeTask.originals.length > 0 && (
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {activeTask.originals.map((o, i) => (
+                      <a key={i} href={o.url} target="_blank" rel="noreferrer">
+                        <img src={o.url} alt={`Trang đề ${i + 1}`} style={{ width: 120, borderRadius: 10, border: '1px solid #E2E8F0' }} />
+                      </a>
+                    ))}
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   {isNhi && <ChepConSvg size={64} mood="headphones" />}
                   <button
@@ -503,6 +571,9 @@ export function StudentPortal({ initialMode = 'nhi', initialData }: { initialMod
                       <span>Nghe lời cô nhận xét</span>
                     </button>
                   )}
+                  {activeTask.feedback.commentAudioUrl && (
+                    <audio controls src={activeTask.feedback.commentAudioUrl} style={{ width: '100%', maxWidth: 360 }} aria-label="Lời nhận xét ghi âm của cô" />
+                  )}
                 </div>
               )}
 
@@ -553,7 +624,33 @@ export function StudentPortal({ initialMode = 'nhi', initialData }: { initialMod
               )}
 
               {/* Khu vực chụp ảnh / ghi âm / quay video */}
-              {isTodo(activeTask) && !submitting && (
+              {taskError && (
+                <div className="error" role="alert" style={{ fontWeight: 700, fontSize: isNhi ? 17 : 14.5 }}>
+                  {taskError}
+                </div>
+              )}
+
+              {/* Bài tự luyện (lớp 6–9): không gửi cô, con tự đánh dấu đã xong */}
+              {live && activeTask.isPractice && isTodo(activeTask) && !taskLoading && (
+                <button
+                  type="button"
+                  className="primary"
+                  style={{ width: '100%', minHeight: 52 }}
+                  onClick={async () => {
+                    setTaskError(null);
+                    try {
+                      await studentCall(`/student/practice/${activeTask.id}/done`, { method: 'POST' });
+                      replaceTask(await loadTaskDetail(activeTask));
+                    } catch (e) {
+                      setTaskError(errorText(e));
+                    }
+                  }}
+                >
+                  ✅ Con làm xong rồi
+                </button>
+              )}
+
+              {isTodo(activeTask) && !submitting && !activeTask.isPractice && (!live || (activeTask.loaded && activeTask.canSubmit !== false)) && (
                 <div className="stack" style={{ gap: 14, marginTop: 4 }}>
                   {draftFiles.length > 0 && (
                     <div
@@ -607,8 +704,9 @@ export function StudentPortal({ initialMode = 'nhi', initialData }: { initialMod
                   {showAudioPanel && (
                     <BrowserAudioRecorder
                       isNhi={isNhi}
-                      onRecorded={(label, url) => {
-                        setDraftFiles((prev) => [...prev, { kind: 'audio', label, url }]);
+                      allowSample={!live}
+                      onRecorded={(f) => {
+                        setDraftFiles((prev) => [...prev, f]);
                         setShowAudioPanel(false);
                       }}
                     />
@@ -617,7 +715,7 @@ export function StudentPortal({ initialMode = 'nhi', initialData }: { initialMod
                   <div className="stack" style={{ gap: 10 }}>
                     {activeTask.submissionKinds.includes('photo') && (
                       <label style={{ cursor: 'pointer' }}>
-                        <input type="file" accept="image/*" capture="environment" onChange={handleFilePick('photo')} style={{ display: 'none' }} />
+                        <input type="file" accept="image/*" multiple onChange={handleFilePick('photo')} style={{ display: 'none' }} />
                         <span className={draftFiles.length === 0 && isNhi ? 'btn-nhi' : 'btn'} style={{ width: '100%', minHeight: isNhi ? 68 : 52 }}>
                           📷 {draftFiles.length === 0 ? 'Chụp ảnh / Chọn ảnh bài làm' : 'Chụp thêm ảnh'}
                         </span>
@@ -637,7 +735,7 @@ export function StudentPortal({ initialMode = 'nhi', initialData }: { initialMod
 
                     {activeTask.submissionKinds.includes('video') && (
                       <label style={{ cursor: 'pointer' }}>
-                        <input type="file" accept="video/*" capture="user" onChange={handleFilePick('video')} style={{ display: 'none' }} />
+                        <input type="file" accept="video/*" onChange={handleFilePick('video')} style={{ display: 'none' }} />
                         <span className={draftFiles.length === 0 && isNhi ? 'btn-nhi' : 'btn'} style={{ width: '100%', minHeight: isNhi ? 68 : 52 }}>
                           🎬 Quay video / Chọn video
                         </span>

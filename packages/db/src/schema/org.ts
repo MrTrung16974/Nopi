@@ -13,7 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { createdAt, inList, pk } from './_common.js';
-import { ENROLLMENT_STATUSES, MEMBER_ROLES, SPACE_KINDS } from './enums.js';
+import { ENROLLMENT_STATUSES, MEMBER_ROLES, SCHOOL_STATUSES, SPACE_KINDS } from './enums.js';
 import { students, users } from './identity.js';
 import { subjects } from './curriculum.js';
 
@@ -27,11 +27,13 @@ export const schools = pgTable(
     id: pk(),
     kind: text().notNull().default('school'),
     name: text().notNull(),
+    /** active | locked — quản trị hệ thống khoá/mở (mục quản trị hệ thống) */
+    status: text().notNull().default('active'),
     /** Xem SpaceSettings trong @nopi/domain — luôn đọc qua resolveSpaceSettings(). */
     settings: jsonb().notNull().default({}),
     createdAt: createdAt(),
   },
-  (t) => [check('schools_kind_chk', inList(t.kind, SPACE_KINDS))],
+  (t) => [check('schools_kind_chk', inList(t.kind, SPACE_KINDS)), check('schools_status_chk', inList(t.status, SCHOOL_STATUSES))],
 );
 
 export const schoolMembers = pgTable(

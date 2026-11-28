@@ -40,6 +40,17 @@ describe('trường – lớp – phân công', () => {
     expect((await O.post(`/schools/${s.school.id}/academic-years`, { name: '2027-2028', startsOn: '2027-09-05', endsOn: '2028-05-31' })).statusCode).toBe(403);
   });
 
+  it('vai trò guardian_owner lỡ gán ở trường thật không cho quản lý lớp (chỉ có hiệu lực ở không gian gia đình)', async () => {
+    const s = await setupSchool(t);
+    const parent = await loginByPhone(t, randomPhone());
+    await t.db.insert(schema.schoolMembers).values({ schoolId: s.school.id, userId: parent.user.id, role: 'guardian_owner' });
+    const P = api(t, parent.accessToken);
+    const c1 = s.classes['1A']!.id;
+    expect((await P.get(`/classes/${c1}/students`)).statusCode).toBe(403);
+    expect((await P.post(`/classes/${c1}/login-cards`, {})).statusCode).toBe(403);
+    expect((await P.get(`/schools/${s.school.id}/settings`)).statusCode).toBe(403);
+  });
+
   it('phân công theo lớp–môn: kiểm môn thuộc khối, đổi giáo viên giữ lịch sử', async () => {
     const s = await setupSchool(t);
     const lan = await addTeacher(t, s.A, s.school.id, '  trần   thị lan '); // tên gõ tay được chuẩn hoá

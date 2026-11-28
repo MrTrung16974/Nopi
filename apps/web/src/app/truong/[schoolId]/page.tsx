@@ -167,11 +167,22 @@ function TeachingTab({ schoolId, yearId, teachers }: { schoolId: string; yearId:
   const m = useMsg();
   if (!yearId) return <p className="muted">Chọn năm học ở tab «Năm học & lớp» trước.</p>;
 
-  const assign = (classId: string, subjectId: number, teacherId: string) =>
-    m.run(async () => {
+  /** Ô đang có giáo viên mà đổi/bỏ → hỏi lại (giáo viên cũ mất quyền giao & chấm bài của lớp–môn này). Ô trống thì giao luôn. */
+  const assign = (classId: string, className: string, subjectId: number, subjectName: string, current: string | null, teacherId: string) => {
+    if (current) {
+      const next = teachers.find((t) => t.id === teacherId)?.fullName;
+      const ok = window.confirm(
+        next
+          ? `Đổi giáo viên ${subjectName} lớp ${className}: ${current} → ${next}?\n\n${current} sẽ không giao và chấm bài môn này ở lớp nữa. Bài đã giao vẫn giữ nguyên.`
+          : `Bỏ phân công ${current} dạy ${subjectName} lớp ${className}?\n\nLớp–môn này sẽ chưa có ai giao bài.`,
+      );
+      if (!ok) return;
+    }
+    return m.run(async () => {
       await call(`/classes/${classId}/teaching/${subjectId}`, teacherId ? { method: 'PUT', body: { teacherId } } : { method: 'DELETE' });
       await grid.reload();
     });
+  };
 
   return (
     <div className="stack">
@@ -188,7 +199,7 @@ function TeachingTab({ schoolId, yearId, teachers }: { schoolId: string; yearId:
                   <tr key={s.subjectId}>
                     <td style={{ width: 200 }}>{s.subjectName}{s.isOptional && <span className="muted"> · tự chọn</span>}</td>
                     <td>
-                      <select aria-label={`Giáo viên ${s.subjectName} lớp ${row.className}`} value={s.teacher?.id ?? ''} onChange={(e) => assign(row.classId, s.subjectId, e.target.value)}>
+                      <select aria-label={`Giáo viên ${s.subjectName} lớp ${row.className}`} value={s.teacher?.id ?? ''} onChange={(e) => assign(row.classId, row.className, s.subjectId, s.subjectName, s.teacher?.fullName ?? null, e.target.value)}>
                         <option value="">— Chưa phân công —</option>
                         {teachers.map((t) => <option key={t.id} value={t.id}>{t.fullName}</option>)}
                       </select>
